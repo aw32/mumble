@@ -39,6 +39,7 @@
     #include <sys/mman.h>
     #include <fcntl.h>
     #include <errno.h>
+    #include <poll.h>
 
     #include <GL/glew.h>
     #include <GL/glut.h>
@@ -297,6 +298,7 @@
     static int read_mumble(Context *ctx) {
         int state = 0; // 0 nothing, 1 error, 2 update
         while(1) {
+            printf("read_mumble_loop\n");
             if (ctx->omMsg.omh.iLength < 0) {
                 // receive the overlay message header
                 ssize_t length = recv(ctx->iSocket, ctx->omMsg.headerbuffer, sizeof(struct OverlayMsgHeader), 0);
@@ -905,6 +907,7 @@
         while (XPending(Xdisplay))
         {
             XNextEvent(Xdisplay, &event);
+            printf("event.type %d\n", event.type);
             switch (event.type)
             {
                 case ClientMessage:
@@ -1077,8 +1080,27 @@
 
         int xmsg = 0;
 
-        while ((xmsg = updateTheMessageQueue()) != 0) {
+        int xfd = ConnectionNumber(Xdisplay);
+        int mfd = ctx.iSocket;
 
+        struct pollfd pfd[2];
+        memset(&pfd, 0, sizeof(pfd));
+        pfd[0].fd = xfd;
+        pfd[0].events = POLLIN;
+        pfd[1].fd = mfd;
+        pfd[1].events = POLLIN;
+        int poll_ret = 0;
+
+        while(1) {
+
+            poll_ret = poll(pfd, 2, -1);
+
+            xmsg = updateTheMessageQueue();
+            if (xmsg == 0) {
+                break;
+            }
+
+            printf("xmsg %d\n", xmsg);
 
             int msg = 0;
             msg = read_mumble(&ctx);
@@ -1088,7 +1110,9 @@
             if (xmsg == 2 || msg == 2) {
                 redrawTheWindow();
             }
-
+            if (poll_ret == -1) {
+                break;
+            }
         }
 
         return 0;
